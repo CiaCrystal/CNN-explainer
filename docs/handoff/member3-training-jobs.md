@@ -243,12 +243,14 @@
 
 ## 下一步（按优先级，下一个 agent 从这里开始）
 
-1. 按用户指示，由用户在终端执行普通推送更新远程分支及 PR（不要加 `--force`）：
+1. 将本地完整保留的 `feature/member3-training-job-control` 分支重新推送到远程（重建同名远程分支并绑定上游跟踪）：
    ```powershell
    cd c:\Users\BCA\Desktop\code\CNN-explainer
-   git push origin feature/member3-training-job-control
+   git push -u origin feature/member3-training-job-control
    ```
-   推送后将上方「PR 描述补充」章节内容追加到 GitHub PR 描述中。
+   推送后，使用**锁定本仓库 `CiaCrystal/CNN-explainer` 为 base** 的对比链接创建组内 PR（避免 GitHub 默认指向 fork 上游原仓库）：
+   - `https://github.com/CiaCrystal/CNN-explainer/compare/main...CiaCrystal:CNN-explainer:feature/member3-training-job-control?expand=1`
+   并将上方「PR 描述补充」章节内容填入 PR 描述中。
 2. 跨成员联调与合并顺序把控：
    - **成员4（合并前置）**：按本文档「合并前置条件：前端适配清单（交给成员4）」完成 `training-runtime.service.ts`、`sim-models.ts` 与 Mode B 页面适配后一起合并（或先合入前端兼容改动）；
    - **成员1**：合并 `application.yml` 时对齐 `deepvision.training.python-executable`（`T1-03`）；
@@ -276,3 +278,4 @@
 - 2026-11-14 16:50（member3-followup-agent）：完成 S3（将 `TrainingJobEvent` 写入与裁剪移出全局 `schedulerLock`、流式事件每 16 条批量 flush `TrainingJob`、历史事件按阈值 16 批量裁剪并在读取/终态兜底对齐窗口，在 `TrainingEventStreamAndHistoryTest` 补充批量裁剪单测），执行 `JAVA_HOME=D:\Android\jbr mvn -o "-Dmaven.repo.local=.m2/repository" "-DforkCount=0" -q clean test`（26 项通过）与 `.venv\Scripts\python.exe -m pytest tests -q`（7 项通过），提交 `ff3fafd`。
 - 2026-11-14 16:57（member3-followup-agent）：完成 5 项次要评审项（移除重复 `@PostConstruct`、在 `waitForWorkerExit` 写入真实 OS `exitCode`、新增 `terminal-runtime-retention` 延迟驱逐终态内存对象并回退 H2、将幂等查找前置到 `datasetService.getDetail` 之前、补充成员1 `T1-03` Python 路径冲突提示，并在 `TrainingControlConfirmationTest` 与 `TrainingIdempotencyTest` 新增单测），执行 `JAVA_HOME=D:\Android\jbr mvn -o "-Dmaven.repo.local=.m2/repository" "-DforkCount=0" -q clean test`（28 项通过）与 `.venv\Scripts\python.exe -m pytest tests -q`（7 项通过），提交 `3e0336e`。
 - 2026-11-14 17:00（member3-followup-agent）：完成 B3（在交接文档中补充逐文件函数级的「合并前置条件：前端适配清单（交给成员4）」与可直接复制粘贴的「PR 描述补充」），再次复核全套 28 项 Java 测试与 7 项 Python 测试通过、`frontend/` 零改动、`i/crlf` 换行符一致；按用户指示不执行 `git push`，交由用户手动推送更新远程分支。
+- 2026-11-14 17:36（member3-followup-agent）：远程同名分支在关闭跨仓库误建 PR 时被误删，核实本地 `feature/member3-training-job-control` 分支与全部提交完好无损；在交接文档中补充锁定本仓库 `CiaCrystal/CNN-explainer` 的组内 PR 链接并提交，重新推送重建远程分支 `origin/feature/member3-training-job-control`。
