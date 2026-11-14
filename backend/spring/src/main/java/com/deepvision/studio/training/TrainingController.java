@@ -2,7 +2,6 @@ package com.deepvision.studio.training;
 
 import com.deepvision.studio.training.TrainingDtos.CheckpointTestResult;
 import com.deepvision.studio.training.TrainingDtos.CollaborationRoomSummary;
-import com.deepvision.studio.training.TrainingDtos.DatasetErrorResponse;
 import com.deepvision.studio.training.TrainingDtos.DatasetImportResponse;
 import com.deepvision.studio.training.TrainingDtos.InferenceSampleListResponse;
 import com.deepvision.studio.training.TrainingDtos.SingleInferenceRequest;
@@ -13,6 +12,8 @@ import com.deepvision.studio.training.TrainingDtos.TrainingCheckpointSummary;
 import com.deepvision.studio.training.TrainingDtos.TrainingControlResponse;
 import com.deepvision.studio.training.TrainingDtos.TrainingDatasetDetail;
 import com.deepvision.studio.training.TrainingDtos.TrainingDatasetOption;
+import com.deepvision.studio.training.TrainingDtos.TrainingErrorResponse;
+import com.deepvision.studio.training.TrainingDtos.TrainingEventsResponse;
 import com.deepvision.studio.training.TrainingDtos.TrainingStartResponse;
 import com.deepvision.studio.training.TrainingDtos.TrainingStatusResponse;
 import com.deepvision.studio.training.TrainingDtos.WeightHistogramResponse;
@@ -38,6 +39,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -142,10 +144,17 @@ public class TrainingController {
 
   @PostMapping("/start")
   @Operation(summary = "Start a training job")
-  @ApiResponse(responseCode = "200", description = "Training job started")
+  @ApiResponse(responseCode = "200", description = "Training job started or replayed via Idempotency-Key")
   @ApiResponse(responseCode = "400", description = "Training configuration is invalid")
-  public TrainingStartResponse start(Principal principal, @Valid @RequestBody StartTrainingRequest request) {
-    return jobService.start(request, principal == null ? null : principal.getName());
+  @ApiResponse(responseCode = "409", description = "Idempotency-Key reused with different configuration")
+  @ApiResponse(responseCode = "429", description = "Training capacity or queue limit exceeded")
+  public TrainingStartResponse start(
+      Principal principal,
+      @Parameter(description = "Optional client idempotency key for safe retries")
+      @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+      @Valid @RequestBody StartTrainingRequest request
+  ) {
+    return jobService.start(request, principal == null ? null : principal.getName(), idempotencyKey);
   }
 
   @GetMapping("/checkpoints")
@@ -211,6 +220,19 @@ public class TrainingController {
     return jobService.status(username(principal), jobId);
   }
 
+  @GetMapping("/{jobId}/events")
+  @Operation(summary = "Get bounded training job event history after a given sequence")
+  @ApiResponse(responseCode = "200", description = "Bounded list of sequenced training events")
+  @ApiResponse(responseCode = "400", description = "Job not found or query parameters invalid")
+  public TrainingEventsResponse events(
+      Principal principal,
+      @PathVariable String jobId,
+      @RequestParam(value = "afterSequence", required = false, defaultValue = "0") long afterSequence,
+      @RequestParam(value = "limit", required = false, defaultValue = "100") int limit
+  ) {
+    return jobService.events(username(principal), jobId, afterSequence, limit);
+  }
+
   @PostMapping("/{jobId}/pause")
   @Operation(summary = "Pause a training job")
   public TrainingControlResponse pause(Principal principal, @PathVariable String jobId) {
@@ -241,10 +263,36 @@ public class TrainingController {
     return jobService.save(username(principal), jobId);
   }
 
+  @ExceptionHandler(TrainingApiException.class)
+  ResponseEntity<TrainingErrorResponse> trainingApiError(
+      TrainingApiException ex,
+      jakarta.servlet.http.HttpServletRequest request
+  ) {
+    String requestId = resolveRequestId(request);
+    return ResponseEntity.status(ex.httpStatus())
+        .header("X-Request-Id", requestId)
+        .body(new TrainingErrorResponse(ex.code(), ex.getMessage(), ex.details(), requestId));
+  }
+
   @ExceptionHandler(IllegalArgumentException.class)
-  ResponseEntity<DatasetErrorResponse> trainingBadRequest(IllegalArgumentException ex) {
+  ResponseEntity<TrainingErrorResponse> trainingBadRequest(
+      IllegalArgumentException ex,
+      jakarta.servlet.http.HttpServletRequest request
+  ) {
+    String requestId = resolveRequestId(request);
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-        .body(new DatasetErrorResponse("BAD_REQUEST", ex.getMessage()));
+        .header("X-Request-Id", requestId)
+        .body(new TrainingErrorResponse("BAD_REQUEST", ex.getMessage(), java.util.Map.of(), requestId));
+  }
+
+  private String resolveRequestId(jakarta.servlet.http.HttpServletRequest request) {
+    if (request != null) {
+      String header = request.getHeader("X-Request-Id");
+      if (header != null && !header.isBlank()) {
+        return header.trim();
+      }
+    }
+    return java.util.UUID.randomUUID().toString();
   }
 
   private String username(Principal principal) {

@@ -1,5 +1,6 @@
 package com.deepvision.studio.training;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
@@ -8,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 public final class TrainingDtos {
   private TrainingDtos() {}
@@ -73,6 +75,19 @@ public final class TrainingDtos {
   @Schema(description = "Dataset error response")
   public record DatasetErrorResponse(String error, String message) {}
 
+  @Schema(description = "Unified training error response (provisional, pending Member 2 alignment)")
+  public record TrainingErrorResponse(
+      String code,
+      String message,
+      Map<String, Object> details,
+      String requestId,
+      String error
+  ) {
+    public TrainingErrorResponse(String code, String message, Map<String, Object> details, String requestId) {
+      this(code, message, details == null ? Map.of() : details, requestId, code);
+    }
+  }
+
   @Schema(description = "Train/validation/test split ratios")
   public record SplitRequest(double train, double val, double test) {}
 
@@ -113,10 +128,24 @@ public final class TrainingDtos {
       String status,
       int totalEpochs,
       int totalBatches,
-      String streamUrl
-  ) {}
+      String streamUrl,
+      String configDigest,
+      boolean idempotentReplay,
+      Integer queuePosition
+  ) {
+    public TrainingStartResponse(
+        String jobId,
+        String status,
+        int totalEpochs,
+        int totalBatches,
+        String streamUrl
+    ) {
+      this(jobId, status, totalEpochs, totalBatches, streamUrl, null, false, null);
+    }
+  }
 
   @Schema(description = "Training metric stream message")
+  @JsonIgnoreProperties(ignoreUnknown = true)
   public record TrainingMetricMessage(
       String type,
       String jobId,
@@ -151,11 +180,84 @@ public final class TrainingDtos {
       double latestAccuracy,
       Double latestValAccuracy,
       long elapsedSeconds,
-      long etaSeconds
-  ) {}
+      long etaSeconds,
+      String pendingControl,
+      String device,
+      long lastSequence,
+      Integer exitCode,
+      String errorCode,
+      String errorReason,
+      String configDigest,
+      Instant createdAt,
+      Instant startedAt,
+      Instant updatedAt,
+      Instant finishedAt
+  ) {
+    public TrainingStatusResponse(
+        String jobId,
+        String status,
+        int epoch,
+        int batch,
+        int totalEpochs,
+        int totalBatches,
+        double latestLoss,
+        Double latestValLoss,
+        double latestAccuracy,
+        Double latestValAccuracy,
+        long elapsedSeconds,
+        long etaSeconds
+    ) {
+      this(
+          jobId,
+          status,
+          epoch,
+          batch,
+          totalEpochs,
+          totalBatches,
+          latestLoss,
+          latestValLoss,
+          latestAccuracy,
+          latestValAccuracy,
+          elapsedSeconds,
+          etaSeconds,
+          null,
+          null,
+          0L,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+      );
+    }
+  }
 
   @Schema(description = "Training job control response")
-  public record TrainingControlResponse(String jobId, String status, String message) {}
+  public record TrainingControlResponse(
+      String jobId,
+      String status,
+      String message,
+      String pendingControl,
+      boolean accepted
+  ) {
+    public TrainingControlResponse(String jobId, String status, String message) {
+      this(jobId, status, message, null, true);
+    }
+  }
+
+  @Schema(description = "Bounded training event history response")
+  public record TrainingEventsResponse(
+      String jobId,
+      String status,
+      String schemaVersion,
+      long lastSequence,
+      Long earliestAvailableSequence,
+      boolean truncated,
+      List<JsonNode> events
+  ) {}
 
   @Schema(description = "Weight histogram bin")
   public record HistogramBin(String label, int count) {}
@@ -177,6 +279,7 @@ public final class TrainingDtos {
   ) {}
 
   @Schema(description = "Checkpoint test evaluation result")
+  @JsonIgnoreProperties(ignoreUnknown = true)
   public record CheckpointTestResult(
       String type,
       String jobId,
